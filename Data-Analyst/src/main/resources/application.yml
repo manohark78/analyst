@@ -1,0 +1,33 @@
+server:
+  port: 8080
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: Offline-AI-Analyst
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+# Application Specific Configuration
+app:
+  storage:
+    db-path: "data/analyst.db"
+    upload-dir: "uploads"
+  llm:
+    model-path: "models/qwen2.5-3b-instruct-q4_k_m.gguf"
+    gpu-layers: 35 # GTX 1650 can handle ~35 layers for a 3B model
+    threads: 8
+    context-size: 4096
+  analysis:
+    max-rows-preview: 100
+    default-sampling-size: 1000
+
+logging:
+  level:
+    com.enterprise.dataanalyst: INFO
+    org.duckdb: WARN
+  file:
+    name: logs/app.log
