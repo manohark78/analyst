@@ -195,6 +195,9 @@
                 onChart(data) {
                     renderChart(bodyDiv, data);
                 },
+                onTable(data) {
+                    renderTable(bodyDiv, data);
+                },
                 onDone() {
                     bodyDiv.classList.remove('streaming-cursor');
                     state.isStreaming = false;
@@ -230,12 +233,13 @@
         return div;
     }
 
-    // === MARKDOWN RENDERING (lightweight) ===
+    // === MARKDOWN RENDERING (lightweight but robust) ===
     function renderMarkdown(text) {
         if (!text) return '';
+        
         let html = text
-            // Code blocks
-            .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+            // Code blocks (multiline)
+            .replace(/```(\w*)\n([\s\S]*?)(```|$)/g, '<pre><code>$2</code></pre>')
             // Inline code
             .replace(/`([^`]+)`/g, '<code>$1</code>')
             // Bold
@@ -246,23 +250,26 @@
             .replace(/^### (.+)$/gm, '<h4>$1</h4>')
             .replace(/^## (.+)$/gm, '<h3>$1</h3>')
             .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-            // Tables (basic)
-            .replace(/\|(.+)\|\n\|[-| ]+\|\n([\s\S]*?)(?=\n\n|\n$|$)/g, (match, header, body) => {
-                const heads = header.split('|').map(h => `<th>${h.trim()}</th>`).join('');
+            // Lists (Bulleted)
+            .replace(/^\s*[-*+]\s+(.+)$/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>')
+            // Lists (Numbered)
+            .replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>)+/g, '<ol>$&</ol>')
+            // Tables (Improved)
+            .replace(/\|(.+)\|\r?\n\|[-| ]+\|\r?\n([\s\S]*?)(?=\r?\n\r?\n|\r?\n$|$)/g, (match, header, body) => {
+                const heads = header.split('|').filter(h => h.trim()).map(h => `<th>${h.trim()}</th>`).join('');
                 const rows = body.trim().split('\n').map(row => {
-                    const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
+                    const cells = row.split('|').filter(c => c.trim()).map(cell => `<td>${cell.trim()}</td>`).join('');
                     return `<tr>${cells}</tr>`;
                 }).join('');
-                return `<table><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table>`;
+                return `<div class="table-wrapper"><table><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table></div>`;
             })
-            // Lists
-            .replace(/^- (.+)$/gm, '<li>$1</li>')
-            .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-            // Paragraphs
+            // Paragraphs & Breaks
             .replace(/\n\n/g, '</p><p>')
             .replace(/\n/g, '<br>');
 
-        return `<p>${html}</p>`;
+        return `<p>${html}</p>`.replace(/<p>\s*<\/p>/g, '');
     }
 
     // === CHART RENDERING ===
@@ -297,6 +304,38 @@
 
         chartDiv.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:12px;text-transform:uppercase;">${valueKey} by ${labelKey}</div>${barsHtml}`;
         container.appendChild(chartDiv);
+    }
+
+    // === TABLE RENDERING ===
+    function renderTable(container, data) {
+        if (!data || !data.rows || data.rows.length === 0) return;
+
+        const tableContainer = document.createElement('div');
+        tableContainer.className = 'structured-table-container';
+
+        let html = `
+            <div class="table-meta">
+                <span>${data.rowCount} rows retrieved</span>
+                ${data.executionTimeMs ? `<span>${data.executionTimeMs}ms</span>` : ''}
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead><tr>${data.columns.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+                    <tbody>
+        `;
+
+        data.rows.forEach(row => {
+            html += `<tr>${row.map(cell => `<td>${cell ?? ''}</td>`).join('')}</tr>`;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        tableContainer.innerHTML = html;
+        container.appendChild(tableContainer);
     }
 
     // === FILE UPLOAD ===
@@ -388,16 +427,24 @@
 
     function selectDataset(ds) {
         state.activeDataset = ds;
+        
+        // If we have an active conversation, update its association (optional, but good for UX)
+        if (state.activeConversation) {
+            state.activeConversation.activeDatasetId = ds.id;
+        }
+
         renderDatasetList();
         updateHeaderDataset();
         previewBtn.disabled = false;
         schemaBtn.disabled = false;
+        
+        showToast(`Analyzing ${ds.name}`, 'success');
     }
 
     function updateHeaderDataset() {
         const label = headerDataset.querySelector('.header-label');
         if (state.activeDataset) {
-            label.textContent = `${state.activeDataset.name} (${state.activeDataset.rowCount?.toLocaleString()} rows)`;
+            label.textContent = `Analyzing: ${state.activeDataset.name}`;
             label.classList.add('has-data');
         } else {
             label.textContent = 'No dataset selected';
@@ -451,6 +498,21 @@
             state.activeConversation = conv;
             renderHistoryList();
 
+            // Auto-select the dataset associated with this chat
+            if (conv.activeDatasetId) {
+                const associatedDs = state.datasets.find(d => d.id === conv.activeDatasetId);
+                if (associatedDs) {
+                    state.activeDataset = associatedDs;
+                } else {
+                    state.activeDataset = null;
+                }
+            } else {
+                state.activeDataset = null;
+            }
+            
+            updateHeaderDataset();
+            renderDatasetList();
+
             // Clear and render messages
             messagesContainer.innerHTML = '';
             if (welcomeScreen) welcomeScreen.style.display = 'none';
@@ -467,6 +529,10 @@
 
     function startNewChat() {
         state.activeConversation = null;
+        state.activeDataset = null; // Clear dataset for new chat
+        updateHeaderDataset();
+        renderDatasetList();
+        
         messagesContainer.innerHTML = '';
         if (welcomeScreen) welcomeScreen.style.display = 'flex';
         renderHistoryList();

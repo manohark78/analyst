@@ -70,7 +70,7 @@ const API = {
     },
 
     // === Chat (SSE Streaming) ===
-    streamChat(message, conversationId, datasetId, { onToken, onSql, onChart, onDone, onError }) {
+    streamChat(message, conversationId, datasetId, { onToken, onSql, onChart, onTable, onDone, onError }) {
         const controller = new AbortController();
 
         fetch('/api/chat/stream', {
@@ -113,15 +113,19 @@ const API = {
                         content = content.replace(/<chart>[\s\S]*?<\/chart>/, '');
                     }
 
-                    if (content.trim()) {
+                    // Check for embedded table data
+                    const tableMatch = content.match(/<table_data>([\s\S]*?)<\/table_data>/);
+                    if (tableMatch) {
+                        try {
+                            if (onTable) onTable(JSON.parse(tableMatch[1].trim()));
+                        } catch(e) { console.error("Table parse error", e); }
+                        content = content.replace(/<table_data>[\s\S]*?<\/table_data>/, '');
+                    }
+
+                    if (content) {
                         onToken(content);
                     }
                 }
-            }
-
-            // Process remaining buffer
-            if (buffer.trim()) {
-                onToken(buffer);
             }
 
             onDone();

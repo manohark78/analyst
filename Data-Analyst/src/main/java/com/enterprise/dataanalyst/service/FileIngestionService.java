@@ -21,7 +21,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Handles file upload, ingestion into DuckDB, and dataset registry.
- * Supports CSV and multi-sheet Excel files.
  */
 @Slf4j
 @Service
@@ -34,12 +33,10 @@ public class FileIngestionService {
     @Value("${app.storage.upload-dir}")
     private String uploadDir;
 
-    // In-memory dataset registry (persisted to DuckDB in Phase 4)
     private final Map<String, DatasetInfo> datasetRegistry = new ConcurrentHashMap<>();
 
     /**
-     * Ingest a file. For Excel files, ALL sheets are ingested as separate tables.
-     * Returns a list of DatasetInfo (one per sheet for Excel, one for CSV).
+     * Ingest a file. For Excel files, ALL sheets are ingested as separate tables within ONE DatasetInfo.
      */
     public List<DatasetInfo> ingestFile(MultipartFile file) throws IOException, SQLException {
         String originalFilename = file.getOriginalFilename();
@@ -55,38 +52,39 @@ public class FileIngestionService {
         Files.copy(file.getInputStream(), filePath);
         log.info("Saved uploaded file: {}", filePath);
 
-        List<DatasetInfo> datasets = new ArrayList<>();
+        List<DatasetInfo.TableInfo> tables = new ArrayList<>();
 
         if (fileExtension.equalsIgnoreCase("csv")) {
             String tableName = "data_" + fileId;
             ingestCsvToDuckDB(filePath, tableName);
-            DatasetInfo info = buildDatasetMetadata(tableName, originalFilename, filePath.toString(), fileExtension);
-            datasetRegistry.put(info.getId(), info);
-            datasets.add(info);
+            tables.add(buildTableMetadata(tableName, "Default"));
 
         } else if (fileExtension.equalsIgnoreCase("xlsx") || fileExtension.equalsIgnoreCase("xls")) {
             List<ExcelToCsvConverter.SheetCsv> sheets = excelConverter.convertAllSheets(filePath);
-
             for (ExcelToCsvConverter.SheetCsv sheet : sheets) {
-                String tableName = "data_" + fileId + "_" + sheet.sheetName();
+                String tableName = "data_" + fileId + "_" + sheet.sheetName().replaceAll("[^a-zA-Z0-9]", "_");
                 ingestCsvToDuckDB(sheet.csvPath(), tableName);
-
-                String displayName = originalFilename + " → " + sheet.sheetName();
-                DatasetInfo info = buildDatasetMetadata(tableName, displayName, filePath.toString(), fileExtension);
-                datasetRegistry.put(info.getId(), info);
-                datasets.add(info);
-
-                // Clean up temp CSV
+                tables.add(buildTableMetadata(tableName, sheet.sheetName()));
                 Files.deleteIfExists(sheet.csvPath());
             }
-
         } else {
             Files.deleteIfExists(filePath);
-            throw new IllegalArgumentException("Unsupported file type: " + fileExtension + ". Supported: csv, xlsx, xls");
+            throw new IllegalArgumentException("Unsupported file type: " + fileExtension);
         }
 
-        log.info("Ingested {} dataset(s) from {}", datasets.size(), originalFilename);
-        return datasets;
+        DatasetInfo dataset = DatasetInfo.builder()
+                .id(fileId)
+                .name(originalFilename)
+                .filePath(filePath.toString())
+                .fileType(fileExtension)
+                .uploadedAt(LocalDateTime.now())
+                .tables(tables)
+                .build();
+
+        datasetRegistry.put(dataset.getId(), dataset);
+        log.info("Ingested dataset '{}' with {} table(s)", originalFilename, tables.size());
+        
+        return List.of(dataset);
     }
 
     private void ingestCsvToDuckDB(Path csvPath, String tableName) throws SQLException {
@@ -95,10 +93,9 @@ public class FileIngestionService {
                 "CREATE TABLE %s AS SELECT * FROM read_csv_auto('%s', header=true, ignore_errors=true)",
                 tableName, escapedPath);
         duckDBService.execute(sql);
-        log.info("Created DuckDB table: {}", tableName);
     }
 
-    private DatasetInfo buildDatasetMetadata(String tableName, String displayName, String filePath, String type) throws SQLException {
+    private DatasetInfo.TableInfo buildTableMetadata(String tableName, String sheetName) throws SQLException {
         long rowCount = 0;
         try (Statement stmt = duckDBService.getConnection().createStatement();
              ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + tableName)) {
@@ -118,46 +115,27 @@ public class FileIngestionService {
             }
         }
 
-        // Fetch sample values for each column (first 5 distinct values)
-        List<Map<String, Object>> sampleData = duckDBService.query(
-                "SELECT * FROM " + tableName + " LIMIT 5");
+        List<Map<String, Object>> sampleData = duckDBService.query("SELECT * FROM " + tableName + " LIMIT 5");
 
-        return DatasetInfo.builder()
-                .id(UUID.randomUUID().toString().substring(0, 8))
-                .name(displayName)
+        return DatasetInfo.TableInfo.builder()
                 .tableName(tableName)
-                .filePath(filePath)
-                .fileType(type)
+                .sheetName(sheetName)
                 .rowCount(rowCount)
                 .columnCount(columns.size())
                 .columns(columns)
                 .sampleData(sampleData)
-                .uploadedAt(LocalDateTime.now())
                 .build();
     }
 
-    // --- Registry Access ---
-
-    public DatasetInfo getDataset(String id) {
-        return datasetRegistry.get(id);
-    }
-
-    public Collection<DatasetInfo> getAllDatasets() {
-        return datasetRegistry.values();
-    }
-
-    public DatasetInfo getDatasetByTable(String tableName) {
-        return datasetRegistry.values().stream()
-                .filter(d -> d.getTableName().equals(tableName))
-                .findFirst()
-                .orElse(null);
-    }
+    public DatasetInfo getDataset(String id) { return datasetRegistry.get(id); }
+    public Collection<DatasetInfo> getAllDatasets() { return datasetRegistry.values(); }
 
     public void removeDataset(String id) throws SQLException {
         DatasetInfo info = datasetRegistry.remove(id);
         if (info != null) {
-            duckDBService.execute("DROP TABLE IF EXISTS " + info.getTableName());
-            log.info("Dropped table and removed dataset: {}", info.getName());
+            for (DatasetInfo.TableInfo table : info.getTables()) {
+                duckDBService.execute("DROP TABLE IF EXISTS " + table.getTableName());
+            }
         }
     }
 
