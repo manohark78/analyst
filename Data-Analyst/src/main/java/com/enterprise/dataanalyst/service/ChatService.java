@@ -23,13 +23,11 @@ public class ChatService {
 
     private final QueryOrchestrator queryOrchestrator;
     private final ChatHistoryService historyService;
-    private final FileIngestionService fileIngestionService;
 
     /**
      * Main entry point: processes a chat message and returns a streaming response.
      */
     public Flux<String> processMessage(String message, String conversationId, String activeDatasetId) {
-        DatasetInfo dataset = activeDatasetId != null ? fileIngestionService.getDataset(activeDatasetId) : null;
         
         // Save user message first
         if (conversationId != null) {
@@ -37,7 +35,7 @@ public class ChatService {
         }
 
         // Delegate to the Orchestrator for deterministic analytical flow
-        Flux<String> response = queryOrchestrator.orchestrate(message, conversationId, dataset);
+        Flux<String> response = queryOrchestrator.orchestrate(message, conversationId, activeDatasetId);
 
         // Collect and save assistant response
         return collectAndSave(response, conversationId, "ANALYSIS", activeDatasetId);

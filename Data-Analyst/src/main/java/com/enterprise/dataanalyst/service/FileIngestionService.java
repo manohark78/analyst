@@ -128,6 +128,13 @@ public class FileIngestionService {
     }
 
     public DatasetInfo getDataset(String id) { return datasetRegistry.get(id); }
+    public List<DatasetInfo> getDatasets(Collection<String> ids) {
+        if (ids == null) return List.of();
+        return ids.stream()
+                .map(datasetRegistry::get)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toList());
+    }
     public Collection<DatasetInfo> getAllDatasets() { return datasetRegistry.values(); }
 
     public void removeDataset(String id) throws SQLException {

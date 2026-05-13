@@ -20,7 +20,7 @@ app:
     model-path: "models/qwen2.5-3b-instruct-q4_k_m.gguf"
     gpu-layers: 35 # GTX 1650 can handle ~35 layers for a 3B model
     threads: 8
-    context-size: 4096
+    context-size: 2048
   analysis:
     max-rows-preview: 100
     default-sampling-size: 1000

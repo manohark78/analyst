@@ -105,14 +105,16 @@ public class PromptService {
             Rows: %d
             Columns: %d
             
+            SCHEMA:
             | Column Name | Type |
             |-------------|------|
             %s
             
             Provide:
-            1. A brief overview of what this dataset likely contains.
-            2. The column listing in a clean markdown table.
-            3. Suggested questions the user could ask about this data.
+            1. A brief overview of what this dataset likely contains based on the column names.
+            2. 5-10 suggested questions (analytical, statistical, or descriptive) the user could ask about this data.
+            
+            NOTE: Do not repeat the column listing table in your response, as it will be displayed automatically.
             """, dataset.getName(), dataset.getTableName(), dataset.getRowCount(),
                 dataset.getColumnCount(), schema);
     }

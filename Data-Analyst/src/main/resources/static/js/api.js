@@ -92,10 +92,9 @@ const API = {
                 buffer = lines.pop(); // Keep incomplete line in buffer
 
                 for (const line of lines) {
-                    let content = line;
-                    if (line.startsWith('data:')) {
-                        content = line.substring(5);
-                    }
+                    if (!line.startsWith('data:')) continue;
+
+                    let content = line.substring(5);
 
                     // Check for embedded SQL
                     const sqlMatch = content.match(/<sql>([\s\S]*?)<\/sql>/);
@@ -122,7 +121,9 @@ const API = {
                         content = content.replace(/<table_data>[\s\S]*?<\/table_data>/, '');
                     }
 
-                    if (content) {
+                    if (content === '' && line === 'data:') {
+                        onToken('\n');
+                    } else if (content) {
                         onToken(content);
                     }
                 }

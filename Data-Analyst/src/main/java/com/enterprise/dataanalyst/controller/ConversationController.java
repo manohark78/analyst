@@ -23,7 +23,8 @@ public class ConversationController {
         try {
             String title = body.getOrDefault("title", "New Chat");
             String datasetId = body.getOrDefault("datasetId", null);
-            Conversation conv = historyService.createConversation(title, datasetId);
+            List<String> datasetIds = datasetId != null ? List.of(datasetId) : null;
+            Conversation conv = historyService.createConversation(title, datasetIds);
             return ResponseEntity.ok(conv);
         } catch (Exception e) {
             log.error("Failed to create conversation", e);

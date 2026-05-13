@@ -28,7 +28,7 @@ public class ChatHistoryService {
             CREATE TABLE IF NOT EXISTS conversations (
                 id VARCHAR PRIMARY KEY,
                 title VARCHAR NOT NULL,
-                active_dataset_id VARCHAR,
+                dataset_ids TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -49,16 +49,17 @@ public class ChatHistoryService {
         log.info("Chat history schema initialized.");
     }
 
-    public Conversation createConversation(String title, String datasetId) throws SQLException {
+    public Conversation createConversation(String title, List<String> datasetIds) throws SQLException {
         String id = UUID.randomUUID().toString().substring(0, 8);
         String safeTitle = title.replace("'", "''");
+        String idsStr = datasetIds != null ? String.join(",", datasetIds) : "";
         duckDBService.execute(String.format(
-                "INSERT INTO conversations (id, title, active_dataset_id) VALUES ('%s', '%s', '%s')",
-                id, safeTitle, datasetId != null ? datasetId : ""));
+                "INSERT INTO conversations (id, title, dataset_ids) VALUES ('%s', '%s', '%s')",
+                id, safeTitle, idsStr));
         return Conversation.builder()
                 .id(id)
                 .title(title)
-                .activeDatasetId(datasetId)
+                .datasetIds(datasetIds != null ? datasetIds : new ArrayList<>())
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .messages(new ArrayList<>())
@@ -82,7 +83,7 @@ public class ChatHistoryService {
         return rows.stream().map(row -> Conversation.builder()
                 .id(str(row, "id"))
                 .title(str(row, "title"))
-                .activeDatasetId(str(row, "active_dataset_id"))
+                .datasetIds(parseDatasetIds(str(row, "dataset_ids")))
                 .createdAt(LocalDateTime.now())
                 .build()
         ).collect(Collectors.toList());
@@ -111,7 +112,7 @@ public class ChatHistoryService {
         return Conversation.builder()
                 .id(str(conv, "id"))
                 .title(str(conv, "title"))
-                .activeDatasetId(str(conv, "active_dataset_id"))
+                .datasetIds(parseDatasetIds(str(conv, "dataset_ids")))
                 .messages(messages)
                 .build();
     }
@@ -141,6 +142,28 @@ public class ChatHistoryService {
     public void deleteConversation(String id) throws SQLException {
         duckDBService.execute("DELETE FROM messages WHERE conversation_id = '" + id + "'");
         duckDBService.execute("DELETE FROM conversations WHERE id = '" + id + "'");
+    }
+
+    public void addDatasetToConversation(String id, String datasetId) throws SQLException {
+        Conversation conv = getConversation(id);
+        if (conv != null && datasetId != null && !datasetId.isBlank()) {
+            List<String> ids = conv.getDatasetIds() != null ? new ArrayList<>(conv.getDatasetIds()) : new ArrayList<>();
+            if (!ids.contains(datasetId)) {
+                ids.add(datasetId);
+                String idsStr = String.join(",", ids).replace("'", "''");
+                duckDBService.execute(String.format(
+                        "UPDATE conversations SET dataset_ids = '%s', updated_at = CURRENT_TIMESTAMP WHERE id = '%s'",
+                        idsStr, id));
+            }
+        }
+    }
+
+    private List<String> parseDatasetIds(String idsStr) {
+        if (idsStr == null || idsStr.isBlank()) return new ArrayList<>();
+        return Arrays.stream(idsStr.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
     }
 
     private String str(Map<String, Object> row, String key) {

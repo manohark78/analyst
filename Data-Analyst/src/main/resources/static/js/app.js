@@ -246,30 +246,30 @@
             .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
             // Italic
             .replace(/\*(.+?)\*/g, '<em>$1</em>')
-            // Headers
+            // Headers (Handle these before general line breaks)
             .replace(/^### (.+)$/gm, '<h4>$1</h4>')
             .replace(/^## (.+)$/gm, '<h3>$1</h3>')
             .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+            // Tables (Robust implementation)
+            .replace(/\|(.+)\|\r?\n\|[-| ]+\|\r?\n((?:\|.+\|(?:\r?\n|$))+)/g, (match, header, body) => {
+                const heads = header.split('|').map(h => h.trim()).filter(h => h).map(h => `<th>${h}</th>`).join('');
+                const rows = body.trim().split(/\r?\n/).map(row => {
+                    const cells = row.split('|').map(c => c.trim()).filter(c => c).map(cell => `<td>${cell}</td>`).join('');
+                    return `<tr>${cells}</tr>`;
+                }).join('');
+                return `<div class="table-wrapper"><table><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table></div>`;
+            })
             // Lists (Bulleted)
             .replace(/^\s*[-*+]\s+(.+)$/gm, '<li>$1</li>')
             .replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>')
             // Lists (Numbered)
             .replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1</li>')
             .replace(/(<li>.*<\/li>)+/g, '<ol>$&</ol>')
-            // Tables (Improved)
-            .replace(/\|(.+)\|\r?\n\|[-| ]+\|\r?\n([\s\S]*?)(?=\r?\n\r?\n|\r?\n$|$)/g, (match, header, body) => {
-                const heads = header.split('|').filter(h => h.trim()).map(h => `<th>${h.trim()}</th>`).join('');
-                const rows = body.trim().split('\n').map(row => {
-                    const cells = row.split('|').filter(c => c.trim()).map(cell => `<td>${cell.trim()}</td>`).join('');
-                    return `<tr>${cells}</tr>`;
-                }).join('');
-                return `<div class="table-wrapper"><table><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table></div>`;
-            })
             // Paragraphs & Breaks
             .replace(/\n\n/g, '</p><p>')
             .replace(/\n/g, '<br>');
 
-        return `<p>${html}</p>`.replace(/<p>\s*<\/p>/g, '');
+        return `<p>${html}</p>`.replace(/<p>\s*<\/p>/g, '').replace(/<br>\s*<(h[2-4]|ul|ol|div|pre)/g, '<$1');
     }
 
     // === CHART RENDERING ===

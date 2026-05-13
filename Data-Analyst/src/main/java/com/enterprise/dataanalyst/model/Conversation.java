@@ -10,7 +10,7 @@ import java.util.List;
 public class Conversation {
     private String id;
     private String title;
-    private String activeDatasetId;
+    private List<String> datasetIds;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<ChatMessage> messages;
