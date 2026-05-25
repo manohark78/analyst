@@ -134,3 +134,10 @@ The current priority is:
 STABILITY OVER FEATURES.
 OBSERVABILITY OVER COMPLEXITY.
 CONTRACTS OVER PATCHES.
+
+
+STOP AFTER EACH STEP After every implementation step:
+explain what changed
+explain why
+explain possible side effects
+wait for confirmation before proceeding further
