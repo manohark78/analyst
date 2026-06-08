@@ -38,3 +38,41 @@ Output style:
 - technical
 - implementation-focused
 - explain important decisions clearly
+
+- =======≠========≠======================================
+
+- Act as a Senior AI Architect.
+
+I have a local AI Data Analyst application:
+
+- Qwen 7B (CPU only)
+- MiniLM embeddings
+- No third-party APIs
+- Privacy-sensitive data
+- Users can upload any CSV/Excel dataset
+- Dynamic schemas
+- Supports data discovery, SQL generation, data analysis, follow-up queries, and chat
+
+Current issues:
+
+1. High inference latency (~58s), especially prefill time
+2. Occasional wrong intent classification
+3. Full context/schema may be repeatedly sent to the model
+
+I am considering:
+
+- KV Cache / Prefix Cache
+- Schema retrieval instead of full schema injection
+- Conversation state management
+- Confidence-based intent routing
+- ReAct / Reflection strategies
+
+Before writing any code:
+
+1. Analyze whether these ideas are practical for my use case.
+2. Explain expected benefits and trade-offs.
+3. Identify what will improve latency vs what will improve accuracy.
+4. Suggest the best architecture for a single-user local application.
+5. Challenge any assumptions that may be incorrect.
+
+Please discuss the design first. Do not generate implementation code yet.
